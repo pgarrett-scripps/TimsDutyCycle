@@ -4,7 +4,6 @@ from pathlib import Path
 from uuid import uuid4
 
 import matplotlib
-matplotlib.use('TkAgg')
 import numpy as np, matplotlib.pyplot as plt
 import streamlit as st
 
@@ -98,6 +97,5 @@ if st.button('Run'):
         plt.ylabel('time / sec')
         plt.xlabel('frame number')
         plt.ylim([0, 0.6])
-
         st.pyplot(fig)
 
