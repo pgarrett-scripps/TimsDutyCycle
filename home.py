@@ -96,18 +96,29 @@ if st.button('Run'):
         empty_msms = get_unique_value("SELECT COUNT(*) FROM Frames WHERE NumPeaks=0 AND MsMsType=8")
 
         # print exp_frame_time
-        st.write("Number of empty MS frames {}".format(empty_ms))
-        st.write("Number of empty MSMS frames {}".format(empty_msms))
-        st.write("Average abs(time excess) = {0:.2f} %".format(
-            100 * np.mean(np.abs(timediffs - exp_frame_time)) / exp_frame_time))
-        st.write("Average time excess = {0:.2f} %".format(100 * np.mean(timediffs - exp_frame_time) / exp_frame_time))
-        st.write("Abs deviation from expected time {0:.6f}s".format(np.mean(timediffs - exp_frame_time)))
+        st.subheader('Stats')
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric(label="Empty MS frames", value=empty_ms)
+        c2.metric(label="Empty MSMS frames", value=empty_msms)
+        c3.metric(label="number of scans",value=numscans)
+        c4.metric(label="trigger period (ms)",value='{:.3}'.format(cycletime_sec*1000))
+        c5.metric(label="quench time (ms)",value='{:.3}'.format(quenchtime_sec*1000))
+
+        st.subheader('Time Deviations')
+        c1, c2, c3 = st.columns(3)
+        c1.metric(label="Average abs time excess",
+            value='{:.3%}'.format(np.mean(np.abs(timediffs - exp_frame_time)) / exp_frame_time))
+        c2.metric(label="Average time excess",
+                  value='{:.3%}'.format(np.mean(timediffs - exp_frame_time) / exp_frame_time))
+        c3.metric(label="Abs deviation (ms)",
+                  value='{:.3}'.format(1000*np.mean(timediffs - exp_frame_time)))
+
+        st.subheader('Times')
+        c1, c2, = st.columns(2)
         if 1 < len(precsel_times):
-            st.write("Average time precursor search + scheduling: {0:.3f}s".format((np.mean(precsel_times))))
-        st.write("expected time for frame: {0}s".format(exp_frame_time))
-        st.write("number of scans: {0}".format(numscans))
-        st.write("trigger period: {0}".format(cycletime_sec))
-        st.write("quench time: {0}".format(quenchtime_sec))
+            c1.metric(label="Average time prec + sched (ms)", value='{:.6}'.format(1000*np.mean(precsel_times)))
+        c2.metric(label="expected time for frame (ms)", value='{:.6}'.format(1000*exp_frame_time))
+
 
         # Plot results
         fig = plt.figure()
