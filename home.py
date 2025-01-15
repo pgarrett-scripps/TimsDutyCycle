@@ -3,25 +3,38 @@ from contextlib import contextmanager
 from pathlib import Path
 from uuid import uuid4
 
-import numpy as np, matplotlib.pyplot as plt
+import numpy as np
+import plotly.graph_objects as go
 import streamlit as st
 
 st.header('Bruker Timstof Duty Cycle Monitor')
 
 st.text("""
-A Streamlit application to monitor duty cycle impacts for timstof series mass spectrometers. 
+A Streamlit application to monitor duty cycle impacts for Timstof acquisitions. 
 """)
-
-with st.expander('Help'):
-    st.text("""
-    Upload the analysis.tdf file inside of the Bruker .d folder (raw folder). Leave frame_id_high and frame_id_low as
-    default (0, 1) unless you know what you are doing. Click Run.
-    """)
 
 analysis_tdf = st.file_uploader(label='Upload TDF file', type=['.tdf'])
 c1, c2 = st.columns(2)
-frame_id_low = c1.number_input(label='Frame id low', value=1)
-frame_id_high = c2.number_input(label='Frame id high', value=0)
+
+c1, c2 = st.columns(2)
+
+set_min = c1.checkbox('Set minimum frame ID')
+if set_min:
+    frame_id_low = c1.number_input('Frame ID low', value=1)
+else:
+    frame_id_low = None
+
+set_max = c2.checkbox('Set maximum frame ID')
+if set_max:
+    frame_id_high = c2.number_input('Frame ID high', value=100)
+else:
+    frame_id_high = None
+
+# assert that frame_id_high is greater than frame_id_low
+if frame_id_high and frame_id_low:
+    if frame_id_high < frame_id_low:
+        st.warning(f'Frame ID high must be greater than Frame ID low!')
+        st.stop()
 
 
 @contextmanager
@@ -37,7 +50,7 @@ def sqlite_connect(db_bytes):
         fp.unlink()
 
 
-if st.button('Run'):
+if st.button('Run', type='primary', use_container_width=True):
     if not analysis_tdf:
         st.warning(f'Upload TDF file!')
         st.stop()
@@ -45,8 +58,11 @@ if st.button('Run'):
     with sqlite_connect(analysis_tdf) as conn:
 
         # check if range for frame ids where specified
-        if frame_id_high == 0:
+        if frame_id_high == None:
             frame_id_high = conn.execute("SELECT MAX(Id) from Frames").fetchone()[0]
+
+        if frame_id_low == None:
+            frame_id_low = conn.execute("SELECT MIN(Id) from Frames").fetchone()[0]
 
         # Plot MS1 TIC
         tmp = conn.execute(
@@ -95,40 +111,69 @@ if st.button('Run'):
         empty_ms = get_unique_value("SELECT COUNT(*) FROM Frames WHERE NumPeaks=0 AND MsMsType=0")
         empty_msms = get_unique_value("SELECT COUNT(*) FROM Frames WHERE NumPeaks=0 AND MsMsType=8")
 
-        # print exp_frame_time
-        st.subheader('Stats')
-        c1, c2, c3, c4, c5 = st.columns(5)
-        c1.metric(label="Empty MS frames", value=empty_ms)
-        c2.metric(label="Empty MSMS frames", value=empty_msms)
-        c3.metric(label="number of scans",value=numscans)
-        c4.metric(label="trigger period (ms)",value='{:.3}'.format(cycletime_sec*1000))
-        c5.metric(label="quench time (ms)",value='{:.3}'.format(quenchtime_sec*1000))
+        # 3) Replace the block that starts with "fig = plt.figure()" with:
+        fig = go.Figure()
 
-        st.subheader('Time Deviations')
-        c1, c2, c3 = st.columns(3)
-        c1.metric(label="Average abs time excess",
-            value='{:.3%}'.format(np.mean(np.abs(timediffs - exp_frame_time)) / exp_frame_time))
-        c2.metric(label="Average time excess",
-                  value='{:.3%}'.format(np.mean(timediffs - exp_frame_time) / exp_frame_time))
-        c3.metric(label="Abs deviation (ms)",
-                  value='{:.3}'.format(1000*np.mean(timediffs - exp_frame_time)))
+        fig.add_trace(
+            go.Scattergl(
+                x=ids[0:-1],
+                y=timediffs,
+                mode='lines',
+                name='consecutive frames time deltas'
+            )
+        )
 
-        st.subheader('Times')
-        c1, c2, = st.columns(2)
-        if 1 < len(precsel_times):
-            c1.metric(label="Average time prec + sched (ms)", value='{:.6}'.format(1000*np.mean(precsel_times)))
-        c2.metric(label="expected time for frame (ms)", value='{:.6}'.format(1000*exp_frame_time))
+        fig.add_trace(
+            go.Scattergl(
+                x=precsel_ids,
+                y=precsel_times,
+                mode='markers',
+                name='precsel + scheduling times',
+                opacity=0.3
+            )
+        )
 
+        fig.add_trace(
+            go.Scattergl(
+                x=submit_ids,
+                y=submit_times,
+                mode='markers',
+                name='frame submission times',
+                opacity=0.3
+            )
+        )
 
-        # Plot results
-        fig = plt.figure()
-        plt.plot(ids[0:-1], timediffs)
+        # Add a horizontal line for expected frame time:
+        fig.add_shape(
+            type='line',
+            x0=ids[0],
+            y0=exp_frame_time,
+            x1=ids[-1],
+            y1=exp_frame_time,
+            line=dict(color='red', width=2)
+        )
 
-        plt.plot(precsel_ids, precsel_times, 'o', alpha=0.1)
-        plt.plot(submit_ids, submit_times, 'x', alpha=0.1)
-        plt.plot([ids[0], ids[-1]], [exp_frame_time, exp_frame_time], color=[1, 0, 0])
-        plt.legend(('time delta between consecutive frames', 'time for precsel + scheduling'))
-        plt.ylabel('time / sec')
-        plt.xlabel('frame number')
-        plt.ylim([0, 0.6])
-        st.pyplot(fig)
+        fig.update_layout(
+            yaxis_title='time / sec',
+            xaxis_title='frame number',
+            yaxis_range=[0, 0.6],
+            legend_title_text=''
+        )
+
+        sample_name = conn.execute(
+            "SELECT value FROM GlobalMetadata WHERE key='SampleName'"
+        ).fetchone()[0]
+
+        # Then, when setting up the layout for your figure:
+        fig.update_layout(
+            title=f"Duty Cycle Plot - Sample: {sample_name}",
+            legend=dict(
+                orientation='h',
+                yanchor='bottom',
+                y=1.02,
+                xanchor='left',
+                x=0
+            )
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
