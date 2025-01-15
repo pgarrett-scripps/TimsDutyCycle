@@ -111,6 +111,67 @@ if st.button('Run', type='primary', use_container_width=True):
         empty_ms = get_unique_value("SELECT COUNT(*) FROM Frames WHERE NumPeaks=0 AND MsMsType=0")
         empty_msms = get_unique_value("SELECT COUNT(*) FROM Frames WHERE NumPeaks=0 AND MsMsType=8")
 
+        # print exp_frame_time
+        st.subheader('Stats')
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric(
+            label="Empty MS frames",
+            value=empty_ms,
+            help="Number of MS frames (MsMsType=0) containing zero peaks"
+        )
+        c2.metric(
+            label="Empty MSMS frames",
+            value=empty_msms,
+            help="Number of MS/MS frames (MsMsType=8) containing zero peaks"
+        )
+        c3.metric(
+            label="Number of scans",
+            value=numscans,
+            help="Distinct NumScans value in Frames"
+        )
+        c4.metric(
+            label="Trigger period (ms)",
+            value='{:.3}'.format(cycletime_sec * 1000),
+            help="Digitizer_ExtractTriggerTime in ms"
+        )
+        c5.metric(
+            label="Quench time (ms)",
+            value='{:.3}'.format(quenchtime_sec * 1000),
+            help="Collision_QuenchTime_Set in ms"
+        )
+
+        # --- Time Deviations ---
+        c1, c2, c3 = st.columns(3)
+        c1.metric(
+            label="Average abs time excess",
+            value='{:.3%}'.format(np.mean(np.abs(timediffs - exp_frame_time)) / exp_frame_time),
+            help="Mean absolute deviation from expected frame time, normalized by expected time"
+        )
+        c2.metric(
+            label="Average time excess",
+            value='{:.3%}'.format(np.mean(timediffs - exp_frame_time) / exp_frame_time),
+            help="Mean signed deviation from expected frame time, normalized by expected time"
+        )
+        c3.metric(
+            label="Abs deviation (ms)",
+            value='{:.3}'.format(1000 * np.mean(timediffs - exp_frame_time)),
+            help="Absolute difference in ms from expected frame time"
+        )
+
+        # --- Times ---
+        c1, c2 = st.columns(2)
+        if 1 < len(precsel_times):
+            c1.metric(
+                label="Average time prec + sched (ms)",
+                value='{:.6}'.format(1000 * np.mean(precsel_times)),
+                help="Mean time of precursor selection + scheduling per frame (ms)"
+            )
+        c2.metric(
+            label="Expected time for frame (ms)",
+            value='{:.6}'.format(1000 * exp_frame_time),
+            help="Theoretical acquisition time per frame (ms)"
+        )
+
         # 3) Replace the block that starts with "fig = plt.figure()" with:
         fig = go.Figure()
 
